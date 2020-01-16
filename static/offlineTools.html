@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en" style="height: 100%">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://unpkg.com/xterm@3.14.5/dist/xterm.css" />
+    <style>
+        body{
+            padding:0;
+            margin:0;
+            height: 100%;
+        }
+    </style>
+    <title>Terminal</title>
+</head>
+<body>
+    <div id="terms" style="width: 100%; height: 100%;"></div>
+    <script src="https://unpkg.com/xterm@3.14.5/dist/xterm.js"></script>
+    <script src="https://unpkg.com/xterm@3.14.5/dist/addons/fit/fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.18.0/axios.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.5/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-cookie/2.2.1/js.cookie.min.js"></script>
+    <script>
+        Terminal.applyAddon(fit);
+        var app = new Vue({
+            el: '#app',
+            data: {
+                title: 'Title',
+                message: 'Hello Vue!',
+                term:null,
+                socket:null,
+                ids:'',
+                path:'',
+                toolsName:''
+            },
+            mounted(){
+                var form = JSON.parse(decodeURI(atob(window.location.search.split('=')[1])));//传过来的参数
+                this.path = form.path;
+                this.toolsName = form.name?form.name:'';
+                this.getToolSsh({data:form.form});
+                window.addEventListener('beforeunload', e => {
+                    this.socket.emit('close',{'ids':this.ids});
+                    this.socket.close();
+                    this.term.dispose();
+                });
+                window.onresize = ()=>{
+                    this.resizeTerminal();
+                }
+            },
+            destroyed() {
+                window.removeEventListener('beforeunload', e => {
+                    this.socket.emit('close',{'ids':this.ids});
+                    this.socket.close();
+                    this.term.dispose();
+                });
+                window.onresize = null;
+            },
+            methods:{
+                resizeTerminal() {
+                    this.term.fit();
+                    this.socket.emit('resize', {'ids': this.ids, 'cols': this.term.cols, 'rows': this.term.rows});
+                },
+                async getToolSsh(params){
+                    let url = this.path + "/precision/webssh/ssh";
+                    await axios.post(
+                        url,
+                        params,
+                        {
+                            headers: {
+                                'uidNumber': Cookies.get('uidNumber'),
+                                'token': Cookies.get('token')
+                            }
+                        }
+                    ).then(data=>{
+                        if(data.data.code == 0){
+                            //弹出终端
+                            this.ids = data.data.ids;
+                            document.title = `Terminal-${this.ids}:${this.toolsName}`;
+                            this.term = null;
+                            this.term = new Terminal({
+                                fontSize: 18,
+                                cursorBlink: true,
+                                macOptionIsMeta: true,
+                                scrollback: true,
+                            });
+                            this.term.open(document.getElementById('terms'), focus = false);
+                            
+                            this.term.on('data',  termRes=> {
+                                this.socket.emit('input', {'ids': this.ids, 'input': termRes})
+                            });
+                            this.socket = io.connect(this.path + '/offline', {path:'/precision/socket.io'});
+                            this.socket.on('connect',  ()=> {
+                                this.resizeTerminal();
+                                this.socket.emit('getResult', {'ids': this.ids})
+                            });
+                            this.socket.on('disconnect',  ()=> {
+                                this.socket.emit('close', {'ids': this.ids});
+                                this.socket.close();
+                                this.term.dispose();
+                            });
+                            this.socket.on('result',  data=> {
+                                if (data.code == 0){
+                                     this.term.write(data.data)
+                                }else{
+                                   this.socket.emit('close', {'ids': this.ids})
+                                   this.socket.close();
+                                   this.term.dispose();
+                                   window.close();
+                                } 
+                            })
+                        }else{
+                            alert(data.data.msg); 
+                        }
+                    })
+                }
+            }
+        })
+
+    </script>
+</body>
+</html>

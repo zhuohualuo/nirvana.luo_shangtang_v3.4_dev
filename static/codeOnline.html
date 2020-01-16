@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.42.2/codemirror.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.42.2/theme/rubyblue.min.css" rel="stylesheet" />
+
+    <style>
+        .CodeMirror{
+            border:1px solid black;
+            font-size:16px;
+            height: auto;
+        }
+        .code-wrapper{
+            padding: 15px 25px;
+        }
+    </style>
+
+    <title>Script Content</title>
+</head>
+<body>
+    <div id="app" class="code-wrapper">
+        <div>测试用例：<span>{{title}}</span></div>
+        <textarea ref="textarea"></textarea>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.18.0/axios.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.42.2/codemirror.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.42.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-cookie/2.2.1/js.cookie.min.js"></script>
+    <script>
+        var app = new Vue({
+            el: '#app',
+            data: {
+                title: 'Title',
+                message: 'Hello Vue!',
+                editor: false
+            },
+            mounted(){
+                this.editor = CodeMirror.fromTextArea(this.$refs.textarea, {
+                    lineNumbers: true,
+                    mode: 'text/x-python',
+                    gutters: ['CodeMirror-lint-markers'],
+                    theme: 'rubyblue',
+                    lint: true
+                })
+                var path = window.name;
+                var string = window.location.search;
+                var id = string.split('=')[1];
+                this.getCode(id, path);
+            },
+
+            methods:{
+                async getCode(id, path){
+                    let self =this;
+                    let url = path + "/auto/case/script_content/" + id;
+                    await axios.get(
+                        url,
+                        {
+                            headers: {
+                                'uidNumber': Cookies.get('uidNumber'),
+                                'token': Cookies.get('token')
+                            }
+                        }
+                    ).then(function (response) {
+                        if(response.data.code === 0){
+                            self.editor.setValue(response.data.file_content);
+                            self.title = response.data.title;
+                        }
+                        else{
+                            alert(response.data.msg)
+                        }
+                    })
+                }
+            }
+        })
+
+    </script>
+</body>
+</html>
